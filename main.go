@@ -7,13 +7,17 @@ import (
 
 func main() {
 	mux := http.NewServeMux()
-	corsMux := middlewareCors(mux)
-	http.Handle("/", corsMux)
+	mux.Handle("/", http.FileServer(http.Dir("./static/")))
 
-	err := http.ListenAndServe(":8080", nil)
-	if err != nil {
-		log.Fatal(err)
+	corsMux := middlewareCors(mux)
+
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: corsMux,
 	}
+
+	log.Print("Serving on port: 8080")
+	log.Fatal(srv.ListenAndServe())
 }
 
 func middlewareCors(next http.Handler) http.Handler {
