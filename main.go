@@ -3,14 +3,22 @@ package main
 import (
 	"log"
 	"net/http"
+	"strconv"
 )
 
-func main() {
-	mux := http.NewServeMux()
-	mux.Handle("/app", http.StripPrefix("/app", http.FileServer(http.Dir("./app/"))))
-	mux.Handle("/app/assets/", http.StripPrefix("/app/assets/", http.FileServer(http.Dir("./app/assets/"))))
-	mux.HandleFunc("/healthz", handlerReadiness)
+type apiConfig struct {
+	fileserverHits int
+}
 
+func main() {
+	apiCfg := apiConfig{}
+
+	mux := http.NewServeMux()
+	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app/")))))
+	mux.Handle("/app/assets/", http.StripPrefix("/app/assets/", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app/assets/")))))
+	mux.HandleFunc("/healthz", handlerReadiness)
+	mux.HandleFunc("/metrics", apiCfg.handlerMetric)
+	mux.HandleFunc("/reset", apiCfg.handlerReset)
 	corsMux := middlewareCors(mux)
 
 	srv := &http.Server{
@@ -36,10 +44,32 @@ func middlewareCors(next http.Handler) http.Handler {
 	})
 }
 
+func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cfg.fileserverHits += 1
+		next.ServeHTTP(w, r)
+	})
+}
+
 func handlerReadiness(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, err := w.Write([]byte(http.StatusText(http.StatusOK)))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (cfg *apiConfig) handlerMetric(w http.ResponseWriter, r *http.Request) {
+	_, err := w.Write([]byte("Hits: " + strconv.Itoa(cfg.fileserverHits)))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
+	cfg.fileserverHits = 0
+	_, err := w.Write([]byte("Reset count to " + strconv.Itoa(cfg.fileserverHits)))
 	if err != nil {
 		log.Fatal(err)
 	}
