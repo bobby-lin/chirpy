@@ -7,8 +7,8 @@ import (
 
 func main() {
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.Dir("./static/")))
-	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("./assets/"))))
+	mux.Handle("/app", http.StripPrefix("/app", http.FileServer(http.Dir("./app/"))))
+	mux.Handle("/app/assets/", http.StripPrefix("/app/assets/", http.FileServer(http.Dir("./app/assets/"))))
 
 	corsMux := middlewareCors(mux)
 
