@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/go-chi/chi/v5"
 	"log"
 	"net/http"
 	"strconv"
@@ -12,18 +13,26 @@ type apiConfig struct {
 
 func main() {
 	apiCfg := apiConfig{}
+	r := chi.NewRouter()
 
-	mux := http.NewServeMux()
-	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app/")))))
-	mux.Handle("/app/assets/", http.StripPrefix("/app/assets/", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app/assets/")))))
-	mux.HandleFunc("/healthz", handlerReadiness)
-	mux.HandleFunc("/metrics", apiCfg.handlerMetric)
-	mux.HandleFunc("/reset", apiCfg.handlerReset)
-	corsMux := middlewareCors(mux)
+	//mux := http.NewServeMux()
+	//mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app/")))))
+	//mux.Handle("/app/assets/", http.StripPrefix("/app/assets/", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app/assets/")))))
+	//mux.HandleFunc("/healthz", handlerReadiness)
+	//mux.HandleFunc("/metrics", apiCfg.handlerMetric)
+	//mux.HandleFunc("/reset", apiCfg.handlerReset)
+
+	r.Handle("/app", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app")))))
+	r.Handle("/app/*", http.StripPrefix("/app/assets/", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app/assets/")))))
+	r.Get("/healthz", handlerReadiness)
+	r.Get("/metrics", apiCfg.handlerMetric)
+	r.HandleFunc("/reset", apiCfg.handlerReset)
+
+	corsRouter := middlewareCors(r)
 
 	srv := &http.Server{
 		Addr:    ":8080",
-		Handler: corsMux,
+		Handler: corsRouter,
 	}
 
 	log.Print("Serving on port: 8080")
