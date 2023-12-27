@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/go-chi/chi/v5"
 	"log"
 	"net/http"
@@ -24,9 +25,8 @@ func main() {
 
 	r.Handle("/app", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app")))))
 	r.Handle("/app/*", http.StripPrefix("/app/assets/", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app/assets/")))))
-	r.Get("/healthz", handlerReadiness)
-	r.Get("/metrics", apiCfg.handlerMetric)
-	r.HandleFunc("/reset", apiCfg.handlerReset)
+	r.Mount("/api", apiRouter(&apiCfg))
+	r.Mount("/admin", adminRouter(&apiCfg))
 
 	corsRouter := middlewareCors(r)
 
@@ -37,6 +37,20 @@ func main() {
 
 	log.Print("Serving on port: 8080")
 	log.Fatal(srv.ListenAndServe())
+}
+
+func adminRouter(apiCfg *apiConfig) http.Handler {
+	r := chi.NewRouter()
+	r.Get("/metrics", apiCfg.handlerMetric)
+	return r
+}
+
+// Create api sub-routes
+func apiRouter(apiCfg *apiConfig) http.Handler {
+	r := chi.NewRouter()
+	r.Get("/healthz", handlerReadiness)
+	r.HandleFunc("/reset", apiCfg.handlerReset)
+	return r
 }
 
 func middlewareCors(next http.Handler) http.Handler {
@@ -70,7 +84,12 @@ func handlerReadiness(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlerMetric(w http.ResponseWriter, r *http.Request) {
-	_, err := w.Write([]byte("Hits: " + strconv.Itoa(cfg.fileserverHits)))
+	w.Header().Set("Content-Type", "text/html")
+
+	page := fmt.Sprintf("<html>\n\n<body>\n    <h1>Welcome, Chirpy Admin</h1>\n    <p>Chirpy has been visited %d times!</p>\n</body>\n\n</html>\n", cfg.fileserverHits)
+
+	_, err := w.Write([]byte(page))
+
 	if err != nil {
 		log.Fatal(err)
 	}
