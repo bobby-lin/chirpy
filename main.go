@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"log"
@@ -50,6 +51,7 @@ func apiRouter(apiCfg *apiConfig) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/healthz", handlerReadiness)
 	r.HandleFunc("/reset", apiCfg.handlerReset)
+	r.Post("/validate_chirp", handlerValidateChirp)
 	return r
 }
 
@@ -101,4 +103,65 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func handlerValidateChirp(w http.ResponseWriter, r *http.Request) {
+	type requestBody struct {
+		Body string `json:"body"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	reqBody := requestBody{}
+	err := decoder.Decode(&reqBody)
+
+	if err != nil {
+		log.Printf("Error decoding request body: %s", err)
+		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	if len(reqBody.Body) > 140 {
+		log.Printf("Chirp is too long")
+		respondWithError(w, http.StatusBadRequest, "Chirp is too long")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, reqBody.Body)
+}
+
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+	type responseBody struct {
+		Error string `json:"error"`
+	}
+
+	respBody := responseBody{
+		Error: msg,
+	}
+	dat, _ := json.Marshal(respBody)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(dat)
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	type responseBody struct {
+		Body        interface{} `json:"body,omitempty"`
+		CleanedBody interface{} `json:"cleaned_body,omitempty"`
+	}
+
+	respBody := responseBody{
+		Body: payload,
+	}
+
+	dat, err := json.Marshal(respBody)
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(dat)
 }
