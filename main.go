@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/bobby-lin/chirpy/internal/utils"
 	"github.com/go-chi/chi/v5"
 	"log"
 	"net/http"
@@ -126,7 +127,9 @@ func handlerValidateChirp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, reqBody.Body)
+	filteredBody, _ := utils.FilterWords(reqBody.Body)
+
+	respondWithJSON(w, http.StatusOK, filteredBody)
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
@@ -151,7 +154,7 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	}
 
 	respBody := responseBody{
-		Body: payload,
+		CleanedBody: payload,
 	}
 
 	dat, err := json.Marshal(respBody)
