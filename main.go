@@ -3,28 +3,32 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/bobby-lin/chirpy/internal/database"
 	"github.com/bobby-lin/chirpy/internal/utils"
 	"github.com/go-chi/chi/v5"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 )
 
 type apiConfig struct {
 	fileserverHits int
+	db             *database.DB
 }
 
 func main() {
-	apiCfg := apiConfig{}
+	dbConn, err := database.NewDB("./database.json")
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	apiCfg := apiConfig{
+		db: dbConn,
+	}
+
 	r := chi.NewRouter()
-
-	//mux := http.NewServeMux()
-	//mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app/")))))
-	//mux.Handle("/app/assets/", http.StripPrefix("/app/assets/", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app/assets/")))))
-	//mux.HandleFunc("/healthz", handlerReadiness)
-	//mux.HandleFunc("/metrics", apiCfg.handlerMetric)
-	//mux.HandleFunc("/reset", apiCfg.handlerReset)
-
 	r.Handle("/app", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app")))))
 	r.Handle("/app/*", http.StripPrefix("/app/assets/", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir("./app/assets/")))))
 	r.Mount("/api", apiRouter(&apiCfg))
@@ -53,6 +57,8 @@ func apiRouter(apiCfg *apiConfig) http.Handler {
 	r.Get("/healthz", handlerReadiness)
 	r.HandleFunc("/reset", apiCfg.handlerReset)
 	r.Post("/validate_chirp", handlerValidateChirp)
+	r.Get("/chirps", apiCfg.handlerGetChirps)
+	r.Post("/chirps", apiCfg.handlerPostChirps)
 	return r
 }
 
@@ -167,4 +173,43 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	w.Write(dat)
+}
+
+func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
+	chirpsList, err := cfg.db.GetChirps()
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "fail to get chirps")
+		return
+	}
+
+	sort.Slice(chirpsList, func(i, j int) bool {
+		return chirpsList[i].ID < chirpsList[j].ID
+	})
+
+	file, err := json.Marshal(chirpsList)
+	
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(file)
+}
+
+func (cfg *apiConfig) handlerPostChirps(w http.ResponseWriter, r *http.Request) {
+	type requestBody struct {
+		Body string `json:"body"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	reqBody := requestBody{}
+	err := decoder.Decode(&reqBody)
+
+	c, err := cfg.db.CreateChirp(reqBody.Body)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "fail to create chirp")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	file, err := json.Marshal(c)
+	w.Write(file)
 }

@@ -26,6 +26,7 @@ type Chirp struct {
 func NewDB(path string) (*DB, error) {
 	db := DB{
 		path: path,
+		mux:  &sync.RWMutex{},
 	}
 
 	err := db.ensureDB()
@@ -120,6 +121,9 @@ func (db *DB) loadDB() (DBStructure, error) {
 }
 
 func (db *DB) writeDB(dbStructure DBStructure) error {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
 	file, _ := json.MarshalIndent(dbStructure, "", "    ")
 
 	err := os.WriteFile(db.path, file, 0644)
