@@ -16,11 +16,17 @@ type DB struct {
 
 type DBStructure struct {
 	Chirps map[int]Chirp `json:"chirps"`
+	Users  map[int]User  `json:"users"`
 }
 
 type Chirp struct {
 	ID   int    `json:"id"`
 	Body string `json:"body"`
+}
+
+type User struct {
+	ID    int    `json:"id"`
+	Email string `json:"email"`
 }
 
 func NewDB(path string) (*DB, error) {
@@ -38,27 +44,27 @@ func NewDB(path string) (*DB, error) {
 }
 
 func (db *DB) CreateChirp(body string) (Chirp, error) {
-	chirps, err := db.loadDB()
-	nextIndex := len(chirps.Chirps) + 1
+	dbStructure, err := db.loadDB()
+	nextIndex := len(dbStructure.Chirps) + 1
 
 	newChirp := Chirp{
 		ID:   nextIndex,
 		Body: body,
 	}
 
-	if chirps.Chirps == nil {
-		chirps.Chirps = map[int]Chirp{
+	if dbStructure.Chirps == nil {
+		dbStructure.Chirps = map[int]Chirp{
 			nextIndex: newChirp,
 		}
 	} else {
-		chirps.Chirps[nextIndex] = newChirp
+		dbStructure.Chirps[nextIndex] = newChirp
 	}
 
 	if err != nil {
 		return Chirp{}, err
 	}
 
-	err = db.writeDB(chirps)
+	err = db.writeDB(dbStructure)
 	if err != nil {
 		return Chirp{}, err
 	}
@@ -67,21 +73,66 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 }
 
 func (db *DB) GetChirps() ([]Chirp, error) {
-	chirps, err := db.loadDB()
+	dbStructure, err := db.loadDB()
 	if err != nil {
 		log.Fatal(err)
 		return nil, err
 	}
 
-	chirpList := make([]Chirp, len(chirps.Chirps))
+	chirpList := make([]Chirp, len(dbStructure.Chirps))
 
 	i := 0
-	for _, v := range chirps.Chirps {
+	for _, v := range dbStructure.Chirps {
 		chirpList[i] = v
 		i++
 	}
 
 	return chirpList, nil
+}
+
+func (db *DB) GetChirp(id int) (Chirp, error) {
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		log.Fatal(err)
+		return Chirp{}, err
+	}
+
+	c, ok := dbStructure.Chirps[id]
+	if !ok {
+		return Chirp{}, errors.New("chirp does not exist")
+	}
+
+	return c, nil
+}
+
+func (db *DB) CreateUser(email string) (User, error) {
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return User{}, err
+	}
+
+	users := dbStructure.Users
+	nextIndex := len(users) + 1
+
+	u := User{
+		ID:    nextIndex,
+		Email: email,
+	}
+
+	if users == nil {
+		users = map[int]User{
+			nextIndex: u,
+		}
+	} else {
+		users[nextIndex] = u
+	}
+
+	err = db.writeDB(dbStructure)
+	if err != nil {
+		return User{}, err
+	}
+
+	return u, nil
 }
 
 func (db *DB) ensureDB() error {
@@ -92,6 +143,7 @@ func (db *DB) ensureDB() error {
 		err = os.WriteFile(db.path, []byte(""), 0666)
 		err = db.writeDB(DBStructure{
 			Chirps: map[int]Chirp{},
+			Users:  map[int]User{},
 		})
 	}
 
@@ -109,15 +161,15 @@ func (db *DB) loadDB() (DBStructure, error) {
 		return DBStructure{}, err
 	}
 
-	chirps := DBStructure{}
+	dbStructure := DBStructure{}
 
-	err = json.Unmarshal(file, &chirps)
+	err = json.Unmarshal(file, &dbStructure)
 	if err != nil {
 		log.Fatal(err)
 		return DBStructure{}, err
 	}
 
-	return chirps, nil
+	return dbStructure, nil
 }
 
 func (db *DB) writeDB(dbStructure DBStructure) error {

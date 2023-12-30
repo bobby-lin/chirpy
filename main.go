@@ -58,7 +58,10 @@ func apiRouter(apiCfg *apiConfig) http.Handler {
 	r.HandleFunc("/reset", apiCfg.handlerReset)
 	r.Post("/validate_chirp", handlerValidateChirp)
 	r.Get("/chirps", apiCfg.handlerGetChirps)
+	r.Get("/chirps/{chirpID}", apiCfg.handlerGetChirp)
 	r.Post("/chirps", apiCfg.handlerPostChirps)
+
+	r.Post("/users", apiCfg.handlerPostUsers)
 	return r
 }
 
@@ -175,6 +178,29 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Write(dat)
 }
 
+func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, r *http.Request) {
+	chirpID := chi.URLParam(r, "chirpID")
+
+	id, err := strconv.Atoi(chirpID)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "invalid chirp id value: "+chirpID)
+		return
+	}
+
+	c, err := cfg.db.GetChirp(id)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		//respondWithError(w, http.StatusNotFound, "fail to get chirp with id "+chirpID)
+		return
+	}
+	file, _ := json.Marshal(c)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(file))
+
+}
+
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 	chirpsList, err := cfg.db.GetChirps()
 	if err != nil {
@@ -187,7 +213,7 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 	})
 
 	file, err := json.Marshal(chirpsList)
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(file)
@@ -212,4 +238,31 @@ func (cfg *apiConfig) handlerPostChirps(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusCreated)
 	file, err := json.Marshal(c)
 	w.Write(file)
+}
+
+func (cfg *apiConfig) handlerPostUsers(w http.ResponseWriter, r *http.Request) {
+	type requestBody struct {
+		Email string `json:"email"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	reqBody := requestBody{}
+	err := decoder.Decode(&reqBody)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "fail to create user")
+		return
+	}
+
+	email := reqBody.Email
+	user, err := cfg.db.CreateUser(email)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "fail to create user")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	file, _ := json.Marshal(user)
+	w.Write(file)
+
 }
