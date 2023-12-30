@@ -6,6 +6,7 @@ import (
 	"github.com/bobby-lin/chirpy/internal/database"
 	"github.com/bobby-lin/chirpy/internal/utils"
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/bcrypt"
 	"log"
 	"net/http"
 	"sort"
@@ -62,6 +63,7 @@ func apiRouter(apiCfg *apiConfig) http.Handler {
 	r.Post("/chirps", apiCfg.handlerPostChirps)
 
 	r.Post("/users", apiCfg.handlerPostUsers)
+	r.Post("/login", apiCfg.handlerPostLogin)
 	return r
 }
 
@@ -242,7 +244,8 @@ func (cfg *apiConfig) handlerPostChirps(w http.ResponseWriter, r *http.Request) 
 
 func (cfg *apiConfig) handlerPostUsers(w http.ResponseWriter, r *http.Request) {
 	type requestBody struct {
-		Email string `json:"email"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -253,8 +256,7 @@ func (cfg *apiConfig) handlerPostUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	email := reqBody.Email
-	user, err := cfg.db.CreateUser(email)
+	user, err := cfg.db.CreateUser(reqBody.Email, reqBody.Password)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "fail to create user")
 		return
@@ -265,4 +267,41 @@ func (cfg *apiConfig) handlerPostUsers(w http.ResponseWriter, r *http.Request) {
 	file, _ := json.Marshal(user)
 	w.Write(file)
 
+}
+
+func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
+	type requestBody struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	reqBody := requestBody{}
+	err := decoder.Decode(&reqBody)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "fail to login")
+		return
+	}
+
+	email := reqBody.Email
+	password := reqBody.Password
+
+	user, err := cfg.db.GetUser(email)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "fail to login")
+		return
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	user.Password = "" // Don't return password :)
+	file, _ := json.Marshal(user)
+	w.Write(file)
 }
