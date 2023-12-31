@@ -363,7 +363,23 @@ func (cfg *apiConfig) handlerUpdateUsers(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusUnauthorized, "token is invalid")
 		return
 	}
+
+	issuer, err := claims.GetIssuer()
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "token is invalid")
+		return
+	}
+
+	if issuer == "chirpy-refresh" {
+		respondWithError(w, http.StatusUnauthorized, "cannot use refresh token to perform the action")
+		return
+	}
+
 	userId, err := claims.GetSubject()
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "user id is invalid")
+		return
+	}
 
 	id, err := strconv.Atoi(userId)
 	user, err := cfg.db.UpdateUser(id, reqBody.Email, reqBody.Password)
