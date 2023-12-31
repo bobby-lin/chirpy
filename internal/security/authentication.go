@@ -9,12 +9,12 @@ import (
 	"time"
 )
 
-func CreateJwtToken(userId, expiresInSeconds int) (string, error) {
+func CreateJwtToken(userId, expiresInSeconds int, issuer string) (string, error) {
 	signingKey := getJwtSecret()
 	nowUTC := time.Now().UTC()
 
 	claims := &jwt.RegisteredClaims{
-		Issuer:    "chirpy",
+		Issuer:    issuer,
 		Subject:   strconv.Itoa(userId),
 		ExpiresAt: jwt.NewNumericDate(nowUTC.Add(time.Second * time.Duration(expiresInSeconds))),
 		IssuedAt:  jwt.NewNumericDate(nowUTC),

@@ -281,9 +281,8 @@ func (cfg *apiConfig) handlerPostUsers(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 	type requestBody struct {
-		Email            string `json:"email"`
-		Password         string `json:"password"`
-		ExpiresInSeconds int    `json:"expires_in_seconds,omitempty"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -296,11 +295,8 @@ func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 
 	email := reqBody.Email
 	password := reqBody.Password
-	expiresInSeconds := 60 * 60 * 24
-
-	if reqBody.ExpiresInSeconds > 0 {
-		expiresInSeconds = reqBody.ExpiresInSeconds
-	}
+	accessTokenExpiresInSeconds := 60 * 60
+	refreshTokenExpiresInSeconds := 60 * 60 * 24 * 60
 
 	user, err := cfg.db.GetUser(email)
 	if err != nil {
@@ -314,25 +310,33 @@ func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := security.CreateJwtToken(user.ID, expiresInSeconds)
-	if err != err {
-		respondWithError(w, http.StatusUnauthorized, "fail to generate token")
+	accessToken, err := security.CreateJwtToken(user.ID, accessTokenExpiresInSeconds, "chirpy-access")
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "fail to generate accessToken")
+		return
+	}
+
+	refreshToken, err := security.CreateJwtToken(user.ID, refreshTokenExpiresInSeconds, "chirpy-refresh")
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "fail to generate refreshToken")
 		return
 	}
 
 	type responseBody struct {
-		Id    int    `json:"id"`
-		Email string `json:"email"`
-		Token string `json:"token"`
+		Id           int    `json:"id"`
+		Email        string `json:"email"`
+		Token        string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
 	resp := responseBody{
-		Id:    user.ID,
-		Email: user.Email,
-		Token: token,
+		Id:           user.ID,
+		Email:        user.Email,
+		Token:        accessToken,
+		RefreshToken: refreshToken,
 	}
 
 	file, _ := json.Marshal(resp)
