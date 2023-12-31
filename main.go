@@ -298,7 +298,6 @@ func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 	password := reqBody.Password
 	expiresInSeconds := 60 * 60 * 24
 
-	fmt.Println(reqBody.ExpiresInSeconds)
 	if reqBody.ExpiresInSeconds > 0 {
 		expiresInSeconds = reqBody.ExpiresInSeconds
 	}
@@ -341,6 +340,19 @@ func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlerUpdateUsers(w http.ResponseWriter, r *http.Request) {
+	type requestBody struct {
+		Email    string `json:"email,omitempty"`
+		Password string `json:"password,omitempty"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	reqBody := requestBody{}
+	err := decoder.Decode(&reqBody)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "fail to update user")
+		return
+	}
+
 	token := strings.Replace(r.Header.Get("Authorization"), "Bearer ", "", 1)
 	claims, err := security.GetTokenClaims(token)
 	if err != nil {
@@ -348,6 +360,18 @@ func (cfg *apiConfig) handlerUpdateUsers(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	userId, err := claims.GetSubject()
-	fmt.Println(userId)
 
+	id, err := strconv.Atoi(userId)
+	user, err := cfg.db.UpdateUser(id, reqBody.Email, reqBody.Password)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "fail to update user")
+		return
+	}
+
+	user.Password = "" // Remove password from request :)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	dat, _ := json.Marshal(user)
+	w.Write(dat)
 }

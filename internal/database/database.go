@@ -174,6 +174,33 @@ func (db *DB) GetUser(email string) (User, error) {
 	return dbStructure.Users[userId], nil
 }
 
+func (db *DB) UpdateUser(id int, email, password string) (User, error) {
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return User{}, err
+	}
+
+	users := dbStructure.Users
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return User{}, err
+	}
+
+	users[id] = User{
+		ID:       id,
+		Email:    email,
+		Password: string(passwordHash),
+	}
+
+	err = db.writeDB(dbStructure)
+	if err != nil {
+		return User{}, err
+	}
+
+	return users[id], nil
+}
+
 func (db *DB) ensureDB() error {
 	_, err := os.ReadFile(db.path)
 
