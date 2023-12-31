@@ -7,11 +7,13 @@ import (
 	"github.com/bobby-lin/chirpy/internal/security"
 	"github.com/bobby-lin/chirpy/internal/utils"
 	"github.com/go-chi/chi/v5"
+	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
 	"log"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 type apiConfig struct {
@@ -20,6 +22,12 @@ type apiConfig struct {
 }
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
 	dbConn, err := database.NewDB("./database.json")
 	if err != nil {
 		log.Fatal(err)
@@ -53,7 +61,7 @@ func adminRouter(apiCfg *apiConfig) http.Handler {
 	return r
 }
 
-// Create security sub-routes
+// Create API sub-routes
 func apiRouter(apiCfg *apiConfig) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/healthz", handlerReadiness)
@@ -65,6 +73,7 @@ func apiRouter(apiCfg *apiConfig) http.Handler {
 
 	r.Post("/users", apiCfg.handlerPostUsers)
 	r.Post("/login", apiCfg.handlerPostLogin)
+	r.Put("/users", apiCfg.handlerUpdateUsers)
 	return r
 }
 
@@ -289,6 +298,7 @@ func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 	password := reqBody.Password
 	expiresInSeconds := 60 * 60 * 24
 
+	fmt.Println(reqBody.ExpiresInSeconds)
 	if reqBody.ExpiresInSeconds > 0 {
 		expiresInSeconds = reqBody.ExpiresInSeconds
 	}
@@ -328,4 +338,16 @@ func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 
 	file, _ := json.Marshal(resp)
 	w.Write(file)
+}
+
+func (cfg *apiConfig) handlerUpdateUsers(w http.ResponseWriter, r *http.Request) {
+	token := strings.Replace(r.Header.Get("Authorization"), "Bearer ", "", 1)
+	claims, err := security.GetTokenClaims(token)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "token is invalid")
+		return
+	}
+	userId, err := claims.GetSubject()
+	fmt.Println(userId)
+
 }

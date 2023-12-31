@@ -1,8 +1,8 @@
 package security
 
 import (
+	"errors"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/joho/godotenv"
 	"log"
 	"os"
 	"strconv"
@@ -10,17 +10,14 @@ import (
 )
 
 func CreateJwtToken(userId, expiresInSeconds int) (string, error) {
-	signingKey, err := getJwtSecret()
-	if err != nil {
-		log.Print("fail to get signing key")
-		return "", err
-	}
+	signingKey := getJwtSecret()
+	nowUTC := time.Now().UTC()
 
 	claims := &jwt.RegisteredClaims{
 		Issuer:    "chirpy",
 		Subject:   strconv.Itoa(userId),
-		ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(time.Duration(expiresInSeconds))),
-		IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
+		ExpiresAt: jwt.NewNumericDate(nowUTC.Add(time.Second * time.Duration(expiresInSeconds))),
+		IssuedAt:  jwt.NewNumericDate(nowUTC),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -33,11 +30,25 @@ func CreateJwtToken(userId, expiresInSeconds int) (string, error) {
 	return ss, nil
 }
 
-func getJwtSecret() (string, error) {
-	err := godotenv.Load()
+func GetTokenClaims(tokenString string) (jwt.Claims, error) {
+	// Validate Token
+	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(getJwtSecret()), nil
+	})
+
 	if err != nil {
-		return "", err
+		log.Print(err)
+		return jwt.RegisteredClaims{}, err
 	}
 
-	return os.Getenv("JWT_SECRET"), nil
+	if !token.Valid {
+		log.Print("invalid token")
+		return jwt.RegisteredClaims{}, errors.New("token is invalid")
+	}
+
+	return token.Claims, nil
+}
+
+func getJwtSecret() string {
+	return os.Getenv("JWT_SECRET")
 }
