@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/bobby-lin/chirpy/internal/database"
+	"github.com/bobby-lin/chirpy/internal/security"
 	"github.com/bobby-lin/chirpy/internal/utils"
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -52,7 +53,7 @@ func adminRouter(apiCfg *apiConfig) http.Handler {
 	return r
 }
 
-// Create api sub-routes
+// Create security sub-routes
 func apiRouter(apiCfg *apiConfig) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/healthz", handlerReadiness)
@@ -271,8 +272,9 @@ func (cfg *apiConfig) handlerPostUsers(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 	type requestBody struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email            string `json:"email"`
+		Password         string `json:"password"`
+		ExpiresInSeconds int    `json:"expires_in_seconds,omitempty"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -285,6 +287,11 @@ func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 
 	email := reqBody.Email
 	password := reqBody.Password
+	expiresInSeconds := 60 * 60 * 24
+
+	if reqBody.ExpiresInSeconds > 0 {
+		expiresInSeconds = reqBody.ExpiresInSeconds
+	}
 
 	user, err := cfg.db.GetUser(email)
 	if err != nil {
@@ -298,10 +305,27 @@ func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	token, err := security.CreateJwtToken(user.ID, expiresInSeconds)
+	if err != err {
+		respondWithError(w, http.StatusUnauthorized, "fail to generate token")
+		return
+	}
+
+	type responseBody struct {
+		Id    int    `json:"id"`
+		Email string `json:"email"`
+		Token string `json:"token"`
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	user.Password = "" // Don't return password :)
-	file, _ := json.Marshal(user)
+	resp := responseBody{
+		Id:    user.ID,
+		Email: user.Email,
+		Token: token,
+	}
+
+	file, _ := json.Marshal(resp)
 	w.Write(file)
 }
