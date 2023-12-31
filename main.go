@@ -17,8 +17,10 @@ import (
 )
 
 type apiConfig struct {
-	fileserverHits int
-	db             *database.DB
+	fileserverHits               int
+	db                           *database.DB
+	accessTokenExpiresInSeconds  int
+	refreshTokenExpiresInSeconds int
 }
 
 func main() {
@@ -35,7 +37,9 @@ func main() {
 	}
 
 	apiCfg := apiConfig{
-		db: dbConn,
+		db:                           dbConn,
+		accessTokenExpiresInSeconds:  60 * 60,           // 1 hour
+		refreshTokenExpiresInSeconds: 60 * 60 * 24 * 60, // 60 days
 	}
 
 	r := chi.NewRouter()
@@ -74,6 +78,9 @@ func apiRouter(apiCfg *apiConfig) http.Handler {
 	r.Post("/users", apiCfg.handlerPostUsers)
 	r.Post("/login", apiCfg.handlerPostLogin)
 	r.Put("/users", apiCfg.handlerUpdateUsers)
+
+	r.Post("/refresh", apiCfg.handlerRefreshToken)
+	//r.Post("/revoke", apiCfg.handlerRevokeToken)
 	return r
 }
 
@@ -295,8 +302,6 @@ func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 
 	email := reqBody.Email
 	password := reqBody.Password
-	accessTokenExpiresInSeconds := 60 * 60
-	refreshTokenExpiresInSeconds := 60 * 60 * 24 * 60
 
 	user, err := cfg.db.GetUser(email)
 	if err != nil {
@@ -310,13 +315,13 @@ func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := security.CreateJwtToken(user.ID, accessTokenExpiresInSeconds, "chirpy-access")
+	accessToken, err := security.CreateJwtToken(user.ID, cfg.accessTokenExpiresInSeconds, "chirpy-access")
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "fail to generate accessToken")
 		return
 	}
 
-	refreshToken, err := security.CreateJwtToken(user.ID, refreshTokenExpiresInSeconds, "chirpy-refresh")
+	refreshToken, err := security.CreateJwtToken(user.ID, cfg.refreshTokenExpiresInSeconds, "chirpy-refresh")
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "fail to generate refreshToken")
 		return
@@ -393,5 +398,55 @@ func (cfg *apiConfig) handlerUpdateUsers(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	dat, _ := json.Marshal(user)
+	w.Write(dat)
+}
+
+func (cfg *apiConfig) handlerRefreshToken(w http.ResponseWriter, r *http.Request) {
+	token := strings.Replace(r.Header.Get("Authorization"), "Bearer ", "", 1)
+	claims, err := security.GetTokenClaims(token)
+
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "token is invalid")
+		return
+	}
+
+	issuer, err := claims.GetIssuer()
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "token is invalid")
+		return
+	}
+
+	if issuer != "chirpy-refresh" {
+		respondWithError(w, http.StatusUnauthorized, "action requires a refresh token")
+		return
+	}
+
+	//TD: Check if refresh token is revoked in DB
+
+	userId, err := claims.GetSubject()
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "user id is invalid")
+		return
+	}
+
+	id, err := strconv.Atoi(userId)
+
+	type responseBody struct {
+		Token string `json:"token"`
+	}
+
+	accessToken, err := security.CreateJwtToken(id, cfg.accessTokenExpiresInSeconds, "chirpy-access")
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "user id is invalid")
+		return
+	}
+
+	respBody := responseBody{
+		Token: accessToken,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	dat, _ := json.Marshal(respBody)
 	w.Write(dat)
 }
