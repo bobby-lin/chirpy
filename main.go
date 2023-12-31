@@ -80,7 +80,7 @@ func apiRouter(apiCfg *apiConfig) http.Handler {
 	r.Put("/users", apiCfg.handlerUpdateUsers)
 
 	r.Post("/refresh", apiCfg.handlerRefreshToken)
-	//r.Post("/revoke", apiCfg.handlerRevokeToken)
+	r.Post("/revoke", apiCfg.handlerRevokeRefreshToken)
 	return r
 }
 
@@ -421,7 +421,12 @@ func (cfg *apiConfig) handlerRefreshToken(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	//TD: Check if refresh token is revoked in DB
+	isRevoked, err := cfg.db.CheckTokenRevocation(token)
+
+	if isRevoked {
+		respondWithError(w, http.StatusUnauthorized, "token is invalid")
+		return
+	}
 
 	userId, err := claims.GetSubject()
 	if err != nil {
@@ -449,4 +454,40 @@ func (cfg *apiConfig) handlerRefreshToken(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusOK)
 	dat, _ := json.Marshal(respBody)
 	w.Write(dat)
+}
+
+func (cfg *apiConfig) handlerRevokeRefreshToken(w http.ResponseWriter, r *http.Request) {
+	token := strings.Replace(r.Header.Get("Authorization"), "Bearer ", "", 1)
+	claims, err := security.GetTokenClaims(token)
+
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "token is invalid")
+		return
+	}
+
+	issuer, err := claims.GetIssuer()
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "token is invalid")
+		return
+	}
+
+	if issuer != "chirpy-refresh" {
+		respondWithError(w, http.StatusUnauthorized, "action requires a refresh token")
+		return
+	}
+
+	isRevoked, err := cfg.db.CheckTokenRevocation(token)
+
+	if isRevoked {
+		respondWithError(w, http.StatusUnauthorized, "token is already revoked")
+		return
+	}
+
+	err = cfg.db.RevokeRefreshToken(token)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "fail to revoke refresh token")
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

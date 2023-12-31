@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 )
 
 type DB struct {
@@ -17,8 +18,9 @@ type DB struct {
 }
 
 type DBStructure struct {
-	Chirps map[int]Chirp `json:"chirps"`
-	Users  map[int]User  `json:"users"`
+	Chirps                 map[int]Chirp                  `json:"chirps"`
+	Users                  map[int]User                   `json:"users"`
+	RefreshTokenRevocation map[int]RefreshTokenRevocation `json:"refresh_token_revocation"`
 }
 
 type Chirp struct {
@@ -30,6 +32,11 @@ type User struct {
 	ID       int    `json:"id"`
 	Email    string `json:"email"`
 	Password string `json:"password,omitempty"`
+}
+
+type RefreshTokenRevocation struct {
+	ID   string    `json:"id"`
+	Time time.Time `json:"time"`
 }
 
 func NewDB(path string) (*DB, error) {
@@ -44,6 +51,59 @@ func NewDB(path string) (*DB, error) {
 	}
 
 	return &db, nil
+}
+
+func (db *DB) RevokeRefreshToken(token string) error {
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return err
+	}
+
+	refreshTokenRevocation := dbStructure.RefreshTokenRevocation
+	nextIndex := len(refreshTokenRevocation) + 1
+
+	newTokenRevocation := RefreshTokenRevocation{
+		ID:   token,
+		Time: time.Now().UTC(),
+	}
+
+	if refreshTokenRevocation == nil {
+		refreshTokenRevocation = map[int]RefreshTokenRevocation{
+			nextIndex: newTokenRevocation,
+		}
+	} else {
+		refreshTokenRevocation[nextIndex] = newTokenRevocation
+	}
+
+	refreshTokenRevocation[nextIndex] = RefreshTokenRevocation{
+		ID:   token,
+		Time: time.Now().UTC(),
+	}
+
+	err = db.writeDB(dbStructure)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (db *DB) CheckTokenRevocation(token string) (bool, error) {
+	dbStructure, err := db.loadDB()
+
+	if err != nil {
+		return true, err
+	}
+
+	refreshTokenRevocation := dbStructure.RefreshTokenRevocation
+
+	for _, v := range refreshTokenRevocation {
+		if v.ID == token {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (db *DB) CreateChirp(body string) (Chirp, error) {
@@ -208,8 +268,9 @@ func (db *DB) ensureDB() error {
 		log.Println("The database.json does not exist! Creating a new file...")
 		err = os.WriteFile(db.path, []byte(""), 0666)
 		err = db.writeDB(DBStructure{
-			Chirps: map[int]Chirp{},
-			Users:  map[int]User{},
+			Chirps:                 map[int]Chirp{},
+			Users:                  map[int]User{},
+			RefreshTokenRevocation: map[int]RefreshTokenRevocation{},
 		})
 	}
 
