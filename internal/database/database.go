@@ -24,8 +24,9 @@ type DBStructure struct {
 }
 
 type Chirp struct {
-	ID   int    `json:"id"`
-	Body string `json:"body"`
+	ID       int    `json:"id"`
+	AuthorID int    `json:"author_id"`
+	Body     string `json:"body"`
 }
 
 type User struct {
@@ -106,13 +107,14 @@ func (db *DB) CheckTokenRevocation(token string) (bool, error) {
 	return false, nil
 }
 
-func (db *DB) CreateChirp(body string) (Chirp, error) {
+func (db *DB) CreateChirp(body string, authorID int) (Chirp, error) {
 	dbStructure, err := db.loadDB()
 	nextIndex := len(dbStructure.Chirps) + 1
 
 	newChirp := Chirp{
-		ID:   nextIndex,
-		Body: body,
+		ID:       nextIndex,
+		Body:     body,
+		AuthorID: authorID,
 	}
 
 	if dbStructure.Chirps == nil {

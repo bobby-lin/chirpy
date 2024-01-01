@@ -239,15 +239,42 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlerPostChirps(w http.ResponseWriter, r *http.Request) {
+	token := strings.Replace(r.Header.Get("Authorization"), "Bearer ", "", 1)
+	claims, err := security.GetTokenClaims(token)
+
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "token is invalid")
+		return
+	}
+
+	issuer, err := claims.GetIssuer()
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "token is invalid")
+		return
+	}
+
+	if issuer != "chirpy-access" {
+		respondWithError(w, http.StatusUnauthorized, "action requires an access token")
+		return
+	}
+
+	id, err := claims.GetSubject()
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "user id is invalid")
+		return
+	}
+
+	userId, err := strconv.Atoi(id)
+
 	type requestBody struct {
 		Body string `json:"body"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	reqBody := requestBody{}
-	err := decoder.Decode(&reqBody)
+	err = decoder.Decode(&reqBody)
 
-	c, err := cfg.db.CreateChirp(reqBody.Body)
+	c, err := cfg.db.CreateChirp(reqBody.Body, userId)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "fail to create chirp")
 		return
