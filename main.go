@@ -11,6 +11,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -83,6 +84,9 @@ func apiRouter(apiCfg *apiConfig) http.Handler {
 
 	r.Post("/refresh", apiCfg.handlerRefreshToken)
 	r.Post("/revoke", apiCfg.handlerRevokeRefreshToken)
+
+	r.Post("/polka/webhooks", apiCfg.handlerWebhook)
+
 	return r
 }
 
@@ -388,33 +392,31 @@ func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := security.CreateJwtToken(user.ID, cfg.accessTokenExpiresInSeconds, "chirpy-access")
+	// accessToken, err := security.CreateJwtToken(user.ID, cfg.accessTokenExpiresInSeconds, "chirpy-access")
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "fail to generate accessToken")
 		return
 	}
 
-	refreshToken, err := security.CreateJwtToken(user.ID, cfg.refreshTokenExpiresInSeconds, "chirpy-refresh")
+	//refreshToken, err := security.CreateJwtToken(user.ID, cfg.refreshTokenExpiresInSeconds, "chirpy-refresh")
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "fail to generate refreshToken")
 		return
 	}
 
 	type responseBody struct {
-		Id           int    `json:"id"`
-		Email        string `json:"email"`
-		Token        string `json:"token"`
-		RefreshToken string `json:"refresh_token"`
+		Id          int    `json:"id"`
+		Email       string `json:"email"`
+		IsChirpyRed bool   `json:"is_chirpy_red"`
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
 	resp := responseBody{
-		Id:           user.ID,
-		Email:        user.Email,
-		Token:        accessToken,
-		RefreshToken: refreshToken,
+		Id:          user.ID,
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	}
 
 	file, _ := json.Marshal(resp)
@@ -563,4 +565,39 @@ func (cfg *apiConfig) handlerRevokeRefreshToken(w http.ResponseWriter, r *http.R
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (cfg *apiConfig) handlerWebhook(w http.ResponseWriter, r *http.Request) {
+	requestApiKey := r.Header.Get("Authorization")
+	if requestApiKey != "ApiKey "+os.Getenv("POLKA_API_KEY") {
+		respondWithError(w, http.StatusUnauthorized, "invalid API key")
+		return
+	}
+
+	type requestBody struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserID int `json:"user_id"`
+		} `json:"data"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	reqBody := requestBody{}
+	err := decoder.Decode(&reqBody)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "fail to update user")
+		return
+	}
+
+	if reqBody.Event != "user.upgraded" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	status, err := cfg.db.UpdateChirpyRedStatus(reqBody.Data.UserID)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.WriteHeader(status)
 }

@@ -32,9 +32,10 @@ type Chirp struct {
 }
 
 type User struct {
-	ID       int    `json:"id"`
-	Email    string `json:"email"`
-	Password string `json:"password,omitempty"`
+	ID          int    `json:"id"`
+	Email       string `json:"email"`
+	Password    string `json:"password,omitempty"`
+	IsChirpyRed bool   `json:"is_chirpy_red"`
 }
 
 type RefreshTokenRevocation struct {
@@ -220,9 +221,10 @@ func (db *DB) CreateUser(email, password string) (User, error) {
 	}
 
 	u := User{
-		ID:       nextIndex,
-		Email:    email,
-		Password: string(passwordHash),
+		ID:          nextIndex,
+		Email:       email,
+		Password:    string(passwordHash),
+		IsChirpyRed: false,
 	}
 
 	if users == nil {
@@ -279,9 +281,10 @@ func (db *DB) UpdateUser(id int, email, password string) (User, error) {
 	}
 
 	users[id] = User{
-		ID:       id,
-		Email:    email,
-		Password: string(passwordHash),
+		ID:          id,
+		Email:       email,
+		Password:    string(passwordHash),
+		IsChirpyRed: users[id].IsChirpyRed,
 	}
 
 	err = db.writeDB(dbStructure)
@@ -290,6 +293,34 @@ func (db *DB) UpdateUser(id int, email, password string) (User, error) {
 	}
 
 	return users[id], nil
+}
+
+func (db *DB) UpdateChirpyRedStatus(userID int) (int, error) {
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return http.StatusBadRequest, err
+	}
+
+	users := dbStructure.Users
+
+	u, ok := users[userID]
+	if !ok {
+		return http.StatusNotFound, err
+	}
+
+	users[userID] = User{
+		ID:          u.ID,
+		Email:       u.Email,
+		Password:    u.Password,
+		IsChirpyRed: true,
+	}
+	err = db.writeDB(dbStructure)
+	if err != nil {
+		return http.StatusBadRequest, err
+	}
+
+	return http.StatusOK, nil
+
 }
 
 func (db *DB) ensureDB() error {
