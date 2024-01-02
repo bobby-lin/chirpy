@@ -7,7 +7,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"io/fs"
 	"log"
+	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -168,6 +170,33 @@ func (db *DB) GetChirp(id int) (Chirp, error) {
 	}
 
 	return c, nil
+}
+
+func (db *DB) DeleteChirps(userID, chirpID int) (int, error) {
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return http.StatusBadRequest, err
+	}
+
+	chirps := dbStructure.Chirps
+	c, ok := chirps[chirpID]
+	if !ok {
+		return http.StatusBadRequest, errors.New(fmt.Sprintf("chirp id", strconv.Itoa(chirpID), "does not exist"))
+	}
+
+	if c.AuthorID != userID {
+		return http.StatusForbidden, errors.New(fmt.Sprintf("user is not authorised to delete the chirp"))
+	}
+
+	// Delete the chirp
+	delete(chirps, chirpID)
+
+	err = db.writeDB(dbStructure)
+	if err != nil {
+		return http.StatusBadRequest, err
+	}
+
+	return http.StatusOK, nil
 }
 
 func (db *DB) CreateUser(email, password string) (User, error) {

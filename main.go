@@ -70,10 +70,12 @@ func apiRouter(apiCfg *apiConfig) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/healthz", handlerReadiness)
 	r.HandleFunc("/reset", apiCfg.handlerReset)
+
 	r.Post("/validate_chirp", handlerValidateChirp)
 	r.Get("/chirps", apiCfg.handlerGetChirps)
 	r.Get("/chirps/{chirpID}", apiCfg.handlerGetChirp)
 	r.Post("/chirps", apiCfg.handlerPostChirps)
+	r.Delete("/chirps/{chirpID}", apiCfg.handlerDeleteChirp)
 
 	r.Post("/users", apiCfg.handlerPostUsers)
 	r.Post("/login", apiCfg.handlerPostLogin)
@@ -195,6 +197,50 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	w.Write(dat)
+}
+
+func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request) {
+	token := strings.Replace(r.Header.Get("Authorization"), "Bearer ", "", 1)
+	claims, err := security.GetTokenClaims(token)
+
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "token is invalid")
+		return
+	}
+
+	issuer, err := claims.GetIssuer()
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "token is invalid")
+		return
+	}
+
+	if issuer != "chirpy-access" {
+		respondWithError(w, http.StatusUnauthorized, "action requires an access token")
+		return
+	}
+
+	id, err := claims.GetSubject()
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "user id is invalid")
+		return
+	}
+
+	userID, err := strconv.Atoi(id)
+
+	paramValue := chi.URLParam(r, "chirpID")
+	chirpID, err := strconv.Atoi(paramValue)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "invalid chirp id value: "+paramValue)
+		return
+	}
+
+	statusCode, err := cfg.db.DeleteChirps(userID, chirpID)
+	if err != nil {
+		respondWithError(w, statusCode, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, r *http.Request) {
