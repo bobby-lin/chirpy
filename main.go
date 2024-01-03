@@ -272,10 +272,22 @@ func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 	paramAuthorID := r.URL.Query().Get("author_id")
+
+	if paramAuthorID == "" {
+		paramAuthorID = "0"
+	}
+
 	authorID, err := strconv.Atoi(paramAuthorID)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+
+	paramSortOrder := r.URL.Query().Get("sort")
+
+	sortOrder := "asc"
+	if paramSortOrder == "desc" {
+		sortOrder = "desc"
 	}
 
 	chirpsList, err := cfg.db.GetChirps(authorID)
@@ -284,9 +296,15 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sort.Slice(chirpsList, func(i, j int) bool {
-		return chirpsList[i].ID < chirpsList[j].ID
-	})
+	if sortOrder == "asc" {
+		sort.Slice(chirpsList, func(i, j int) bool {
+			return chirpsList[i].ID < chirpsList[j].ID
+		})
+	} else {
+		sort.Slice(chirpsList, func(i, j int) bool {
+			return chirpsList[i].ID > chirpsList[j].ID
+		})
+	}
 
 	file, err := json.Marshal(chirpsList)
 
