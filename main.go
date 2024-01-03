@@ -271,7 +271,14 @@ func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
-	chirpsList, err := cfg.db.GetChirps()
+	paramAuthorID := r.URL.Query().Get("author_id")
+	authorID, err := strconv.Atoi(paramAuthorID)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	chirpsList, err := cfg.db.GetChirps(authorID)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "fail to get chirps")
 		return
@@ -392,31 +399,35 @@ func (cfg *apiConfig) handlerPostLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// accessToken, err := security.CreateJwtToken(user.ID, cfg.accessTokenExpiresInSeconds, "chirpy-access")
+	accessToken, err := security.CreateJwtToken(user.ID, cfg.accessTokenExpiresInSeconds, "chirpy-access")
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "fail to generate accessToken")
 		return
 	}
 
-	//refreshToken, err := security.CreateJwtToken(user.ID, cfg.refreshTokenExpiresInSeconds, "chirpy-refresh")
+	refreshToken, err := security.CreateJwtToken(user.ID, cfg.refreshTokenExpiresInSeconds, "chirpy-refresh")
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "fail to generate refreshToken")
 		return
 	}
 
 	type responseBody struct {
-		Id          int    `json:"id"`
-		Email       string `json:"email"`
-		IsChirpyRed bool   `json:"is_chirpy_red"`
+		Id           int    `json:"id"`
+		Email        string `json:"email"`
+		IsChirpyRed  bool   `json:"is_chirpy_red"`
+		Token        string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
 	resp := responseBody{
-		Id:          user.ID,
-		Email:       user.Email,
-		IsChirpyRed: user.IsChirpyRed,
+		Id:           user.ID,
+		Email:        user.Email,
+		IsChirpyRed:  user.IsChirpyRed,
+		Token:        accessToken,
+		RefreshToken: refreshToken,
 	}
 
 	file, _ := json.Marshal(resp)
